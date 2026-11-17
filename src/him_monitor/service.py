@@ -20,6 +20,25 @@ def _first(data: dict, *keys: str) -> str | None:
     return None
 
 
+def _normalized_key(value: object) -> str:
+    return "".join(character for character in str(value).casefold() if character.isalnum())
+
+
+def _find_key_values(value: object, key: str) -> list[str]:
+    """Find scalar values recursively in normalized Qudi YAML structures."""
+    wanted = _normalized_key(key)
+    values: list[str] = []
+    if isinstance(value, dict):
+        for name, child in value.items():
+            if _normalized_key(name) == wanted and isinstance(child, (str, int, float)) and str(child).strip():
+                values.append(str(child).strip())
+            values.extend(_find_key_values(child, key))
+    elif isinstance(value, list):
+        for child in value:
+            values.extend(_find_key_values(child, key))
+    return values
+
+
 def _section(data: dict, *names: str) -> dict:
     wanted = {name.casefold() for name in names}
     for key, value in data.items():
@@ -112,7 +131,14 @@ def load_experiment(folder: str | Path, *, now: datetime | None = None) -> Exper
     acquisition = _section(metadata_file, "Acquisition")
     metadata = {**parameters, **metadata_file, **config}
     experiment_id = _first_from((global_params, parameters, metadata_file), "experiment", "experiment_id", "identifier")
-    microscope, mode, conflicts = _microscope(metadata_file, experiment_id, task)
+    microscope, fallback_mode, conflicts = _microscope(metadata_file, experiment_id, task)
+    modality_values = []
+    for source in (metadata_file, parameters, config):
+        modality_values.extend(_find_key_values(source, "imaging_modality"))
+    mode = modality_values[0] if modality_values else fallback_mode
+    for value in modality_values[1:] + ([fallback_mode] if modality_values and fallback_mode != "Unknown" else []):
+        if value.casefold() != mode.casefold() and not any(value.casefold() == existing.casefold() for existing in modality_values[:1]):
+            conflicts += (f"Imaging modality values conflict: {mode} vs {value}.",)
     roi_count = _count_rois((acquisition, numbered_rois)) or log_total_rois
     probe_count = probe_count or _count_mapping(fluidic_params, parameters, key="probes")
     warnings = tuple(event.message for event in reversed(events) if event.level == "WARNING")

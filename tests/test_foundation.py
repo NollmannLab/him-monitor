@@ -176,11 +176,60 @@ def test_overview_uses_grouped_ui_without_task_class():
     assert "22px" in window._labels["status"].styleSheet()
     assert "#f5f7fa" in window.styleSheet()
     assert not window._messages_box.isVisible()
-    window._last_refresh = datetime.now() + timedelta(seconds=1)
-    window._update_display(window._snapshot)
-    assert window._labels["monitor_refresh"].text().endswith(":%02d" % window._last_refresh.second)
+    assert "Activity age" not in label_text
+    assert "Last monitor refresh" not in label_text
+    assert "Data health" not in label_text
+    assert "." not in window._labels["last_activity"].text()
     window.close()
     app.processEvents()
+
+
+def test_last_activity_is_second_precision_and_basic_window_omits_technical_fields():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication, QLabel
+    from him_monitor.qt.overview import OverviewWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = OverviewWindow(load_experiment(DATA))
+    labels = "\n".join(label.text() for label in window.findChildren(QLabel))
+    assert window._labels["last_activity"].text() == "2026-11-13 10:01:00"
+    assert "Activity age" not in labels
+    assert "Last monitor refresh" not in labels
+    assert "Data health" not in labels
+    window.close()
+    app.processEvents()
+
+
+def test_imaging_modality_is_read_recursively_and_overrides_fallback(tmp_path):
+    metadata = tmp_path / "metadata"
+    metadata.mkdir()
+    (metadata / "metadata.yml").write_text(
+        "Microscope:\n- type: RAMM\n- Imaging_Modality: Epifluorescence\n",
+        encoding="utf-8",
+    )
+    (metadata / "HiM_task.log").write_text("2026-11-17 14:32:08 - info - starting\n", encoding="utf-8")
+    snapshot = load_experiment(metadata)
+    assert snapshot.mode == "Epifluorescence"
+
+
+def test_imaging_modality_from_nested_parameters_and_fallback_without_it(tmp_path):
+    metadata = tmp_path / "metadata"
+    parameters = metadata / "experiment_parameters"
+    parameters.mkdir(parents=True)
+    (metadata / "metadata.yml").write_text("Microscope:\n- type: RAMM\n", encoding="utf-8")
+    (parameters / "HiM_parameters.yml").write_text(
+        "1- global parameters:\n  experiment: him_epi_sd\n2- imaging parameters:\n- imaging modality: Spinning Disk\n",
+        encoding="utf-8",
+    )
+    (metadata / "HiM_task.log").write_text("2026-11-17 14:32:08 - info - starting\n", encoding="utf-8")
+    snapshot = load_experiment(metadata)
+    assert snapshot.mode == "Spinning Disk"
+
+    fallback = tmp_path / "fallback"
+    fallback.mkdir()
+    (fallback / "HiM_parameters.yml").write_text("experiment: him_epi_sd\n", encoding="utf-8")
+    (fallback / "HiM_task.log").write_text("2026-11-17 14:32:08 - info - starting\n", encoding="utf-8")
+    assert load_experiment(fallback).mode == "Epifluorescence"
 
 
 def test_overview_colors_current_activity_and_roi_by_context():

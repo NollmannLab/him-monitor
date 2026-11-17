@@ -57,7 +57,6 @@ class OverviewWindow(QMainWindow):
         super().__init__()
         self._folder = Path(snapshot.folder)
         self._snapshot = snapshot
-        self._last_refresh = datetime.now()
         self._labels: dict[str, QLabel] = {}
 
         root = QWidget()
@@ -131,7 +130,7 @@ class OverviewWindow(QMainWindow):
     def _build_secondary_section(self) -> QGroupBox:
         box = QGroupBox("Experiment details")
         form = QFormLayout(box)
-        for key, label in (("elapsed", "Elapsed time"), ("last_activity", "Last experiment activity"), ("activity_age", "Activity age"), ("monitor_refresh", "Last monitor refresh"), ("latest", "Latest event"), ("folder", "Experiment folder"), ("health", "Data health")):
+        for key, label in (("last_activity", "Last experiment activity"), ("latest", "Latest event"), ("folder", "Experiment folder")):
             self._labels[key] = QLabel()
             self._labels[key].setWordWrap(True)
             form.addRow(QLabel(f"<b>{label}</b>"), self._labels[key])
@@ -157,7 +156,6 @@ class OverviewWindow(QMainWindow):
             # the last valid display and retry at the next timer tick.
             return
         self._snapshot = snapshot
-        self._last_refresh = datetime.now()
         self._update_display(snapshot)
 
     def _update_display(self, snapshot: ExperimentSnapshot) -> None:
@@ -200,13 +198,9 @@ class OverviewWindow(QMainWindow):
         self._labels["roi"].setText(roi_text)
         self._labels["roi"].setStyleSheet(f"color: {'#16803c' if snapshot.phase == 'IMAGING' else '#667085'}; font-weight: bold")
 
-        self._labels["elapsed"].setText(_format_elapsed(snapshot.elapsed_seconds))
-        self._labels["last_activity"].setText(_value(snapshot.last_activity))
-        self._labels["activity_age"].setText(_activity_age(snapshot.last_activity))
-        self._labels["monitor_refresh"].setText(self._last_refresh.strftime("%Y-%m-%d %H:%M:%S"))
+        self._labels["last_activity"].setText(_format_timestamp(snapshot.last_activity))
         self._labels["latest"].setText(_display_log_message(snapshot.last_event) if snapshot.last_event else "unknown")
         self._labels["folder"].setText(str(self._folder))
-        self._labels["health"].setText(f"{len(snapshot.health.available)} available; {len(snapshot.health.not_yet_produced)} not yet produced; {len(snapshot.health.missing_or_malformed)} missing/malformed; {len(snapshot.health.incomplete)} incomplete")
 
         warning_items = (*snapshot.warnings, *snapshot.conflicts)
         self._warnings_label.setText("Warnings:\n" + "\n".join(f"• {_display_log_message(item)}" for item in warning_items) if warning_items else "")
@@ -221,13 +215,7 @@ class OverviewWindow(QMainWindow):
         super().closeEvent(event)
 
 
-def _activity_age(activity: datetime | None) -> str:
-    if activity is None:
+def _format_timestamp(timestamp: datetime | None) -> str:
+    if timestamp is None:
         return "unknown"
-    seconds = max(0, int((datetime.now() - activity).total_seconds()))
-    if seconds < 60:
-        return f"{seconds} s ago"
-    minutes = seconds // 60
-    if minutes < 60:
-        return f"{minutes} min ago"
-    return f"{minutes // 60} h {minutes % 60} min ago"
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S")
