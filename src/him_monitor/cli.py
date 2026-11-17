@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     app = QApplication(sys.argv if argv is None else ["him-monitor", *argv])
     window = OverviewWindow(load_experiment(folder))
+    app.aboutToQuit.connect(window.shutdown)
     window.show()
     return app.exec()
 

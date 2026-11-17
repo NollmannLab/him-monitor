@@ -57,7 +57,10 @@ class OverviewWindow(QMainWindow):
         super().__init__()
         self._folder = Path(snapshot.folder)
         self._snapshot = snapshot
+        self._closing = False
         self._labels: dict[str, QLabel] = {}
+        self._displayed_values: dict[str, str] = {}
+        self._displayed_styles: dict[str, str] = {}
 
         root = QWidget()
         root.setObjectName("overviewRoot")
@@ -73,7 +76,7 @@ class OverviewWindow(QMainWindow):
         self._update_display(snapshot)
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setInterval(3000)
-        self._refresh_timer.timeout.connect(self.refresh_snapshot)
+        self._refresh_timer.timeout.connect(self._on_refresh_timeout)
         self._refresh_timer.start()
         self.setMinimumWidth(700)
         self.setStyleSheet(
@@ -149,69 +152,108 @@ class OverviewWindow(QMainWindow):
 
     def refresh_snapshot(self) -> None:
         """Reload the selected folder without replacing the current window."""
+        if self._closing:
+            return
         try:
             snapshot = load_experiment(self._folder)
-        except Exception:
+        except (OSError, UnicodeError, ValueError, TypeError):
             # A network file can be appended or temporarily unreadable. Keep
             # the last valid display and retry at the next timer tick.
             return
         self._snapshot = snapshot
         self._update_display(snapshot)
 
+    def _on_refresh_timeout(self) -> None:
+        if not self._closing and self._refresh_timer.isActive():
+            self.refresh_snapshot()
+
+    def shutdown(self) -> None:
+        """Stop refresh delivery before Qt begins destroying the window."""
+        if self._closing:
+            return
+        self._closing = True
+        self._refresh_timer.stop()
+        try:
+            self._refresh_timer.timeout.disconnect(self._on_refresh_timeout)
+        except (RuntimeError, TypeError):
+            pass
+
+    def _set_text(self, key: str, value: str) -> None:
+        if self._displayed_values.get(key) != value:
+            self._labels[key].setText(value)
+            self._displayed_values[key] = value
+
+    def _set_style(self, key: str, widget: QWidget, style: str) -> None:
+        if self._displayed_styles.get(key) != style:
+            widget.setStyleSheet(style)
+            self._displayed_styles[key] = style
+
     def _update_display(self, snapshot: ExperimentSnapshot) -> None:
-        self._labels["name"].setText(snapshot.name)
-        self._labels["experiment_id"].setText(_value(snapshot.experiment_id))
-        self._labels["microscope"].setText(snapshot.microscope)
-        self._labels["mode"].setText(snapshot.mode)
+        if self._closing:
+            return
+        self._set_text("name", snapshot.name)
+        self._set_text("experiment_id", _value(snapshot.experiment_id))
+        self._set_text("microscope", snapshot.microscope)
+        self._set_text("mode", snapshot.mode)
 
         color = _status_color(snapshot.status.value)
         operation = snapshot.current_operation or snapshot.phase or "UNKNOWN"
-        self._labels["status"].setText(snapshot.status.value)
-        self._labels["status"].setStyleSheet(f"font-size: 22px; font-weight: bold; color: {color}")
-        self._labels["cycles_card"].setText(f"{_value(snapshot.completed_cycles)}/{_value(snapshot.total_cycles)}")
-        self._labels["cycles_card"].setStyleSheet("font-size: 22px; font-weight: bold; color: #1d2939")
-        self._labels["operation"].setText(operation)
-        self._labels["operation"].setStyleSheet(f"font-size: 22px; font-weight: bold; color: {color}")
-        self._status_card.setStyleSheet(f"QFrame {{ border: 2px solid {color}; border-radius: 6px; }}")
-        self._cycles_card.setStyleSheet("QFrame { border: 2px solid #98a2b3; border-radius: 6px; }")
-        self._operation_card.setStyleSheet(f"QFrame {{ border: 2px solid {color}; border-radius: 6px; }}")
+        self._set_text("status", snapshot.status.value)
+        self._set_style("status-label", self._labels["status"], f"font-size: 22px; font-weight: bold; color: {color}")
+        self._set_text("cycles_card", f"{_value(snapshot.completed_cycles)}/{_value(snapshot.total_cycles)}")
+        self._set_style("cycles-label", self._labels["cycles_card"], "font-size: 22px; font-weight: bold; color: #1d2939")
+        self._set_text("operation", operation)
+        self._set_style("operation-label", self._labels["operation"], f"font-size: 22px; font-weight: bold; color: {color}")
+        self._set_style("status-card", self._status_card, f"QFrame {{ border: 2px solid {color}; border-radius: 6px; }}")
+        self._set_style("cycles-card", self._cycles_card, "QFrame { border: 2px solid #98a2b3; border-radius: 6px; }")
+        self._set_style("operation-card", self._operation_card, f"QFrame {{ border: 2px solid {color}; border-radius: 6px; }}")
 
-        self._labels["current_cycle"].setText(_value(snapshot.current_cycle))
+        self._set_text("current_cycle", _value(snapshot.current_cycle))
         target = "unknown"
         if snapshot.target_volume_ul is not None or snapshot.flow_rate_ul_min is not None:
             target = f"{_format_number(snapshot.target_volume_ul)} µl at {_format_number(snapshot.flow_rate_ul_min)} µl/min"
-        self._labels["target"].setText(target)
+        self._set_text("target", target)
         if snapshot.incubation_seconds is not None:
             activity_text = f"INCUBATION ({_format_number(snapshot.incubation_seconds)} s)"
         elif snapshot.current_product is not None:
             activity_text = snapshot.current_product
         else:
             activity_text = "unknown"
-        self._labels["activity"].setText(activity_text)
+        self._set_text("activity", activity_text)
         active_activity = operation in {"HYBRIDIZATION", "PHOTOBLEACHING"} and activity_text != "unknown"
-        self._labels["activity"].setStyleSheet(f"color: {'#16803c' if active_activity else '#667085'}; font-weight: bold")
+        self._set_style("activity", self._labels["activity"], f"color: {'#16803c' if active_activity else '#667085'}; font-weight: bold")
         if snapshot.roi_name:
             progress = f" ({snapshot.roi_progress}/{snapshot.roi_total})" if snapshot.roi_progress and snapshot.roi_total else ""
             roi_text = f"{snapshot.roi_name}{progress}"
         else:
             roi_text = "unknown"
-        self._labels["roi"].setText(roi_text)
-        self._labels["roi"].setStyleSheet(f"color: {'#16803c' if snapshot.phase == 'IMAGING' else '#667085'}; font-weight: bold")
+        self._set_text("roi", roi_text)
+        self._set_style("roi", self._labels["roi"], f"color: {'#16803c' if snapshot.phase == 'IMAGING' else '#667085'}; font-weight: bold")
 
-        self._labels["last_activity"].setText(_format_timestamp(snapshot.last_activity))
-        self._labels["latest"].setText(_display_log_message(snapshot.last_event) if snapshot.last_event else "unknown")
-        self._labels["folder"].setText(str(self._folder))
+        self._set_text("last_activity", _format_timestamp(snapshot.last_activity))
+        self._set_text("latest", _display_log_message(snapshot.last_event) if snapshot.last_event else "unknown")
+        self._set_text("folder", str(self._folder))
 
         warning_items = (*snapshot.warnings, *snapshot.conflicts)
-        self._warnings_label.setText("Warnings:\n" + "\n".join(f"• {_display_log_message(item)}" for item in warning_items) if warning_items else "")
-        self._errors_label.setText("Errors:\n" + "\n".join(f"• {_display_log_message(item)}" for item in snapshot.errors) if snapshot.errors else "")
-        self._warnings_label.setStyleSheet("color: #b54708")
-        self._errors_label.setStyleSheet("color: #b42318")
+        self._set_message_text(self._warnings_label, "Warnings:\n" + "\n".join(f"• {_display_log_message(item)}" for item in warning_items) if warning_items else "")
+        self._set_message_text(self._errors_label, "Errors:\n" + "\n".join(f"• {_display_log_message(item)}" for item in snapshot.errors) if snapshot.errors else "")
+        self._set_message_style(self._warnings_label, "color: #b54708")
+        self._set_message_style(self._errors_label, "color: #b42318")
         self._messages_box.setVisible(bool(warning_items or snapshot.errors))
         self.setWindowTitle(f"him-monitor — {snapshot.name}")
 
+    @staticmethod
+    def _set_message_text(widget: QLabel, value: str) -> None:
+        if widget.text() != value:
+            widget.setText(value)
+
+    @staticmethod
+    def _set_message_style(widget: QLabel, style: str) -> None:
+        if widget.styleSheet() != style:
+            widget.setStyleSheet(style)
+
     def closeEvent(self, event: QCloseEvent) -> None:
-        self._refresh_timer.stop()
+        self.shutdown()
         super().closeEvent(event)
 
 

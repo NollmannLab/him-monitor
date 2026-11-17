@@ -273,3 +273,22 @@ def test_completed_window_remains_open_and_shows_final_cards():
     assert window._refresh_timer.isActive()
     window.close()
     app.processEvents()
+
+
+def test_overview_survives_repeated_refreshes_and_shutdown():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+    from him_monitor.qt.overview import OverviewWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = OverviewWindow(load_experiment(DATA))
+    for _ in range(100):
+        window.refresh_snapshot()
+    assert window._labels["status"].text() == "RUNNING"
+    assert window._refresh_timer.isActive()
+    window.close()
+    app.processEvents()
+    assert window._closing
+    assert not window._refresh_timer.isActive()
+    window.refresh_snapshot()
+    assert window._labels["status"].text() == "RUNNING"
