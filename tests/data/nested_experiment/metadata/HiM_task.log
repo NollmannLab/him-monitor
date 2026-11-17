@@ -1,0 +1,5 @@
+2026-11-09 10:00:00,000 - info - qudi.tasks.him.HiMSDTask - Hi-M task started - experiment him_epi_sd
+2026-11-09 10:01:00,000 - warning - qudi.tasks.him.HiMSDTask - Data transfer: server folder not reachable (copy failed)
+2026-11-09 10:02:00,000 - info - qudi.tasks.him.HiMSDTask - Autofocus check cycle 11/11 - ROI_014: 15/15 ROI(s) passed
+2026-11-09 10:03:00,000 - info - qudi.tasks.him.HiMSDTask - 11/11 - Done
+2026-11-09 10:04:00,000 - info - qudi.tasks.him.HiMSDTask - Hi-M task ended after 11/11 cycle(s).

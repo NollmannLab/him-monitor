@@ -1,0 +1,3 @@
+probes:
+  - name: barcode-a
+  - name: barcode-b

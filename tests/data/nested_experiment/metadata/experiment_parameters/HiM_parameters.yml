@@ -1,0 +1,19 @@
+1- global parameters:
+  sample_name: sanitized sample
+  experiment: him_epi_sd
+2- fluidic parameters:
+  probes:
+    1: RT1
+    2: RT2
+    3: RT3
+    4: RT4
+    5: RT5
+    6: RT6
+    7: RT7
+    8: RT8
+    9: RT9
+    10: RT10
+    11: RT11
+4- ROIs:
+  ROI_000: X=0 - Y=0 - Z=0
+  ROI_001: X=1 - Y=1 - Z=1

@@ -1,0 +1,5 @@
+experiment_name: synthetic overview
+sample_name: test sample
+microscope: demo microscope
+setup: demo setup
+roi_count: 3
