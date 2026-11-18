@@ -38,6 +38,14 @@ pytest
 
 The `.venv/` directory is local environment state and should not be committed to the repository.
 
+### Python and platform compatibility
+
+The project supports Python 3.10, 3.11, 3.12, and 3.13. The Qt dependency is pinned to PySide6 6.9.3, together with matching PySide6 Addons, PySide6 Essentials, and Shiboken6 packages.
+
+PySide6 6.9.3 was selected instead of the newer releases because its Linux x86_64 wheels use the `manylinux_2_28` tag. They are compatible with Linux systems providing glibc 2.28 or newer, including `manylinux_2_31_x86_64`, without requiring an operating-system or glibc upgrade. The same release provides the Python 3.13-compatible `cp39-abi3` wheel and matching macOS and Windows wheels.
+
+Newer PySide6 releases may require a newer Linux baseline. Keep the pinned version unless the platform wheel compatibility has been checked again.
+
 ## Launching the monitor
 
 Launch an experiment overview with:
